@@ -17,6 +17,10 @@ import { StandaloneAuth } from './components/StandaloneAuth';
 import { RootErrorFallback } from './components/RootErrorFallback';
 import { WorkspaceSessionProvider } from './components/WorkspaceSessionProvider';
 import {
+  autoPreviewUrlFromSearch,
+  discoverAutoPreviewUrl,
+} from './components/preview/auto-preview';
+import {
   getDaemonBaseUrl,
   getDaemonToken,
   hasReloadSurvivableDaemonToken,
@@ -222,6 +226,29 @@ export function StandaloneApp({ daemonToken }: { daemonToken?: string }) {
     getDevelopmentManagedAgentProvider(),
   );
   const baseUrl = DAEMON_BASE_URL || window.location.origin;
+  const [autoPreviewUrl, setAutoPreviewUrl] = useState<string | undefined>(() =>
+    autoPreviewUrlFromSearch(
+      window.location.search,
+      window.location.href,
+      baseUrl,
+    ),
+  );
+  useEffect(() => {
+    if (autoPreviewUrl) return;
+    const controller = new AbortController();
+    discoverAutoPreviewUrl(
+      window.location.href,
+      baseUrl,
+      // Bound, because a detached `fetch` is not a callable Window method.
+      (input, init) => fetch(input, init),
+      controller.signal,
+    )
+      .then((url) => {
+        if (url) setAutoPreviewUrl(url);
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [autoPreviewUrl, baseUrl]);
   // One-shot ?theme=/?language=/?lang= params are consumed by the useState
   // initializers above; strip them once mounted so a bookmarked URL cannot
   // keep overriding stored preferences on later loads. (The reload retry
@@ -383,6 +410,7 @@ export function StandaloneApp({ daemonToken }: { daemonToken?: string }) {
                     'webPreview',
                     'trajectory',
                   ],
+                  autoPreviewUrl,
                 },
                 environmentPanel: {
                   items: [
