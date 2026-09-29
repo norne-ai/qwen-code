@@ -203,6 +203,12 @@ export type WebShellRightPanelItem =
 export interface WebShellRightPanelOptions {
   /** Empty-state actions to show. Defaults to review and sideTask. */
   items?: readonly WebShellRightPanelItem[];
+  /**
+   * Address opened in a Web preview tab the first time a session is shown,
+   * unless that session already has a preview tab. Hosts that serve the shell
+   * beside a development server supply it.
+   */
+  autoPreviewUrl?: string;
 }
 
 export type WebShellEnvironmentPanelItem =

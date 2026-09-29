@@ -3219,6 +3219,7 @@ export function App({
   const contextUsageHeaderItemVisible =
     chatHeaderItems.includes('contextUsage');
   const rightPanelItems = rightPanel?.items ?? DEFAULT_RIGHT_PANEL_ITEMS;
+  const autoWebPreviewUrl = rightPanel?.autoPreviewUrl;
   const environmentPanelItems =
     environmentPanel?.items ?? DEFAULT_ENVIRONMENT_PANEL_ITEMS;
   // The environment panel is only reachable through the chat header toggle,
@@ -4906,21 +4907,25 @@ export function App({
     if (createSideTask()) return;
     pushToast('error', t('sideTask.createFailed'));
   }, [createSideTask, pushToast, t]);
-  const openWebPreviewTab = useCallback(() => {
-    const id = `web-preview:${crypto.randomUUID()}`;
-    setArtifactPanelTabs((tabs) => [
-      ...tabs,
-      {
-        id,
-        kind: 'web_preview',
-        title: t('webPreview.title'),
-        url: '',
-        viewport: 'desktop',
-      },
-    ]);
-    setActiveArtifactPanelTabId(id);
-    setArtifactPanelOpen(true);
-  }, [t]);
+  const openWebPreviewTab = useCallback(
+    (initialUrl?: string) => {
+      const id = `web-preview:${crypto.randomUUID()}`;
+      const url = initialUrl ?? '';
+      setArtifactPanelTabs((tabs) => [
+        ...tabs,
+        {
+          id,
+          kind: 'web_preview',
+          title: url || t('webPreview.title'),
+          url,
+          viewport: 'desktop',
+        },
+      ]);
+      setActiveArtifactPanelTabId(id);
+      setArtifactPanelOpen(true);
+    },
+    [t],
+  );
   const updateWebPreviewTab = useCallback(
     (tabId: string, state: WebPreviewState) => {
       setArtifactPanelTabs((tabs) =>
@@ -6620,6 +6625,48 @@ export function App({
     webPreviewAvailable,
     workspace.baseUrl,
     workspace.client,
+  ]);
+  // One attempt per session, and only after the restore pass has settled: it
+  // owns the tab list and closes the panel when the session key moves, so a tab
+  // seeded beside it is dropped a moment later. Once the user closes it, it must
+  // not come back on a later render.
+  const autoWebPreviewSessionRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!autoWebPreviewUrl || !webPreviewAvailable || !logicalSessionKey) {
+      return;
+    }
+    if (
+      artifactPanelRestoring ||
+      artifactsLoading ||
+      connection.loadingTranscript ||
+      artifactPanelRestoredSessionKeyRef.current !== logicalSessionKey
+    ) {
+      return;
+    }
+    if (autoWebPreviewSessionRef.current === logicalSessionKey) {
+      return;
+    }
+    autoWebPreviewSessionRef.current = logicalSessionKey;
+    const hasPreviewTab = (tabs?: readonly { kind: string }[]) =>
+      tabs?.some((tab) => tab.kind === 'web_preview') ?? false;
+    if (
+      hasPreviewTab(artifactPanelTabsRef.current) ||
+      hasPreviewTab(
+        initialArtifactPanelPersistedStates[logicalSessionKey]?.tabs,
+      )
+    ) {
+      return;
+    }
+    openWebPreviewTab(autoWebPreviewUrl);
+  }, [
+    artifactPanelRestoring,
+    artifactsLoading,
+    autoWebPreviewUrl,
+    connection.loadingTranscript,
+    initialArtifactPanelPersistedStates,
+    logicalSessionKey,
+    openWebPreviewTab,
+    webPreviewAvailable,
   ]);
   const openShellPanel = useCallback(
     (
@@ -18355,7 +18402,9 @@ export function App({
     onSelectTab: selectArtifactPanelTab,
     onCloseTab: closeArtifactPanelTab,
     onOpenFilePreview: openFilePreview,
-    onOpenWebPreview: workspaceContextActive ? openWebPreviewTab : undefined,
+    onOpenWebPreview: workspaceContextActive
+      ? () => openWebPreviewTab()
+      : undefined,
     onWebPreviewChange: updateWebPreviewTab,
     latestReviewAvailable: latestReviewChanges.length > 0,
     onOpenLatestReview: openLatestReviewPanel,
